@@ -1,4 +1,3 @@
-// eslint *nouppercase
 pragma solidity ^0.4.13;
 
 // interval in anything
@@ -35,8 +34,9 @@ contract Lothereum {
         uint16[] numbers;
         address holder;     
     }
-    uint ticketCounter;
-    mapping(uint => Ticket) tickets;
+    uint public ticketCounter;
+    mapping(uint => Ticket) public tickets;
+    event NewTicket(address holder, uint ticketId, uint16[] numbers);
 
     function Lothereum(
         uint[] _drawingInterval,
@@ -59,15 +59,30 @@ contract Lothereum {
     }
 
     function buyTicket(uint16[] numbers) payable {
-        require(msg.value >= ticketPrice);
+        // validations
+        require(msg.value == ticketPrice);
         require(numbers.length == numbersInTicket);
+        require(areValidNumbers(numbers, maxDrawableNumber));
 
-        ticketCounter++;
+        // effects
+        ticketCounter += 1;
+        uint ticketId = ticketCounter;
+        tickets[ticketId] = Ticket({
+            numbers: numbers,
+            holder: msg.sender
+        });
+
+        // actions
+        NewTicket(msg.sender, ticketId, numbers);
     }
 
     // check the order must be crescent and the max number mustnt be lesser or equal then maxDrawable nubmer 
-    function areValidNumbers(uint16[] storage numbers) internal {
-
+    function areValidNumbers(uint16[] numbers, uint16 maxNumber) returns (bool) {
+        if (numbers[numbers.length - 1] > maxNumber) return false;
+        for (uint8 i; i < numbers.length - 2; i++) {
+            if (numbers[i] >= numbers[i+1]) return false;
+        }
+        return true;
     }
 
 }

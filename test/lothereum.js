@@ -1,28 +1,84 @@
 var Lothereum = artifacts.require("./Lothereum.sol");
+const newInstance = ({interval = [1000], first = 1000, n = 6, max = 60, price = 100}) =>
+    Lothereum.new(interval, first, n, max, price)
 
-contract('Lothereum', () => {
+contract('The Lothereum contract', (accounts) => {
     it("should create a lottery with my started drawing definitions", async function() {
-        let instance = await Lothereum.new([1], 500)
+        let instance = await newInstance({ first: 501 })
 
-        assert(instance.nextDrawing(), 500)
+        assert.equal(await instance.nextDrawing(), 501)
     })
-    it("should correctly set next drawing p1", async function() {
-        let instance = await Lothereum.new([1000], 1000)
-
+    it("should correctly set next drawing", async function() {
+        let instance = await newInstance({})
         await instance.setNextDrawing()
-        assert(instance.nextDrawing(), 2000)
-        assert(instance.nextDrawingIndex(), 0)
+        
+        assert.equal(await instance.nextDrawing(), 2000)
+        assert.equal(await instance.nextDrawingIndex(), 0)
     })
     it("should increment next drawing index", async function() {
-        let instance = await Lothereum.new([1000, 2000], 0)
+        let instance = await newInstance({ interval: [ 500, 700 ], first: 300})
+        await instance.setNextDrawing()
+        assert.equal(await instance.nextDrawing(), 800)
+        assert.equal(await instance.nextDrawingIndex(), 1)
 
         await instance.setNextDrawing()
-        assert(instance.nextDrawing(), 1000)
-        assert(instance.nextDrawingIndex(), 1)
+        assert.equal(await instance.nextDrawing(), 1500)
+        assert.equal(await instance.nextDrawingIndex(), 0)
+    })
+    describe('when validating ticket numbers', function() {
+        it("should check if the array is ordered and the maxnumber is respected", async function() {
+            let instance = await newInstance({})
+            assert.equal(true, await instance.areValidNumbers.call([1,2,3,4], 4))
+        })
+        it("should invalidate for number > maxnumber", async function() {
+            let instance = await newInstance({})
+            assert.equal(false, await instance.areValidNumbers.call([2], 1))
+        })
+        it("should invalidate for unordered array", async function() {
+            let instance = await newInstance({})
+            assert.equal(false, await instance.areValidNumbers.call([3,2,1], 60))
+        })
+        it("should invalidate with two equal values", async function() {
+            let instance = await newInstance({})
+            assert.equal(false, await instance.areValidNumbers.call([3,3,4], 60))
+        })
+        it("should invalidate a crazy array", async function() {
+            let instance = await newInstance({})
+            assert.equal(false, await instance.areValidNumbers.call([1,3,5,5,9,31,20], 25))
+        })
+    })
+    describe('when buying a ticket', function() {
+        it('should require sent amount to equal ticketprice', async function() {
+            let instance = await newInstance({ price: 100 })
+            let throwed = false
+            try {
+                await instance.buyTicket.call([10, 20, 30, 40, 50, 60], { from: accounts[0], value: 150 })
+            } catch (e) {
+                throwed = true
+            }
+            assert(throwed, "it didn't throw an exception")
+        })
+        it('should require numbers length to be correct', async function() {
+            let instance = await newInstance({ price: 100 })
+            let throwed = false
+            try {
+                await instance.buyTicket.call([10, 20, 30, 40, 50], { from: accounts[0], value: 100 })
+            } catch (e) {
+                throwed = true
+            }
+            assert(throwed, "it didn't throw an exception")
+        })
+        it('should tell everyone I bought it', async function() {
+            let instance = await newInstance({ price: 100 })
+            // if this crashes its because we are lazy and didnt use BigNumbers
+            let ticketCounter = Number(await instance.ticketCounter.call())
+            let ticketTransaction = await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[0], value: 100 })
+            let { args: myTicket } = ticketTransaction.logs.find( l => l.event == 'NewTicket')
+            let newTicketCounter = Number(await instance.ticketCounter.call())
 
-        await instance.setNextDrawing()
-        assert(instance.nextDrawing(), 3000)
-        assert(instance.nextDrawingIndex(), 0)
+            assert.notEqual(ticketCounter, newTicketCounter)
+            assert.equal(newTicketCounter, myTicket.ticketId)
+        })
     })
 })
 
