@@ -13,10 +13,11 @@ pragma solidity ^0.4.13;
  *
  * Lotthereum is a lottery dapp to finish once 
  * and for all the uncertainty arround regular
- * lotteries, and it also intent to give some
+ * lotteries, it also intents to give some
  * of its own profit to charity and a fixed
  * amount to maintainers, developer and ethereum
- * foundation
+ * foundation, every one is welcome to support 1% community
+ * soon we gonna have all our rules on Solidity, till there mail us!
  * 
  */
 
@@ -24,17 +25,18 @@ contract Lothereum {
     uint[] public drawingInterval; // Time interval between consecutive drawings (ms)
     uint public nextDrawingIndex; // current index of the drawing interval array
     uint public nextDrawing; // timestamp of next drawing date (unix)
+    uint32 public drawingCounter; // how many drawnings so far
 
-    uint public numbersInTicket;
-    uint16 public maxDrawableNumber;   
+    uint public numbersInTicket; // how many numbers must have in the ticket
+    uint16 public maxDrawableNumber; // the highest number starting in 1
 
-    uint public ticketPrice;
+    uint public ticketPrice; // exactly the transaction value to get a ticket
 
     struct Ticket {
         uint16[] numbers;
         address holder;     
     }
-    uint public ticketCounter;
+    uint public ticketCounter; // how many tickets so far
     mapping(uint => Ticket) public tickets;
     event NewTicket(address holder, uint ticketId, uint16[] numbers);
 
