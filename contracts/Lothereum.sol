@@ -38,7 +38,10 @@ contract Lothereum {
     }
     uint public ticketCounter; // how many tickets so far
     mapping(uint => Ticket) public tickets;
-    event NewTicket(address holder, uint ticketId, uint16[] numbers);
+    event NewTicket(address holder, uint ticketId, uint16[] numbers, uint32 drawingNumber);
+    event NumberWasDrawed(uint16 number, uint32 drawingNumber);
+
+    uint16[] winningNumbers;
 
     function Lothereum(
         uint[] _drawingInterval,
@@ -47,6 +50,11 @@ contract Lothereum {
         uint16 _maxDrawableNumber,
         uint _ticketPrice
     ) {
+        require(_ticketPrice > 0);
+        require(_maxDrawableNumber > 0);
+        require(_numbersInTicket > 0);
+        require(_numbersInTicket < _maxDrawableNumber);
+
         drawingInterval = _drawingInterval;
         nextDrawing = firstDrawingDate;
         nextDrawingIndex = 0;
@@ -61,6 +69,9 @@ contract Lothereum {
     }
 
     function buyTicket(uint16[] numbers) payable {
+        //get rekt
+        processDraw();
+
         // validations
         require(msg.value == ticketPrice);
         require(numbers.length == numbersInTicket);
@@ -75,16 +86,40 @@ contract Lothereum {
         });
 
         // actions
-        NewTicket(msg.sender, ticketId, numbers);
+        NewTicket(msg.sender, ticketId, numbers, drawingCounter);
     }
 
     // check the order must be crescent and the max number mustnt be lesser or equal then maxDrawable nubmer 
-    function areValidNumbers(uint16[] numbers, uint16 maxNumber) returns (bool) {
+    function areValidNumbers(uint16[] numbers, uint16 maxNumber) constant returns (bool) {
         if (numbers[numbers.length - 1] > maxNumber) return false;
         for (uint8 i; i < numbers.length - 2; i++) {
             if (numbers[i] >= numbers[i+1]) return false;
         }
         return true;
+    }
+
+    function _validateDrawedNumber(uint16 number, uint16[] drawed, uint maxLength) returns (bool) {
+        if(drawed.length < maxLength){
+            for (uint16 i; i < drawed.length; i++) {
+                if (drawed[i] == number) return false;
+            }
+            return true;
+        }
+    }
+
+    function _generateRandomNumber(uint seed, uint16 mod) returns (uint16){
+        return (uint16(sha3(block.blockhash(block.number-1), seed)) % mod) + 1;
+    }
+
+    function processDraw() {
+        if(now < nextDrawing) return;
+        uint16 number = _generateRandomNumber(now, maxDrawableNumber);
+        if(_validateDrawedNumber(number, winningNumbers, numbersInTicket)){
+            winningNumbers.push(number);
+            NumberWasDrawed(number, drawingCounter);
+        }
+
+        // did i finish? process winners
     }
 
 }

@@ -1,15 +1,51 @@
 var Lothereum = artifacts.require("./Lothereum.sol");
-const newInstance = ({interval = [1000], first = 1000, n = 6, max = 60, price = 100}) =>
+const newInstance = ({interval = [1000], first = 1000, n = 6, max = 60, price = 100} = {}) =>
     Lothereum.new(interval, first, n, max, price)
 
 contract('The Lothereum contract', (accounts) => {
+    it("should not allow for a 0 price lottery ticket", async function(){
+        let throwed = false
+        try {
+            let instance = await newInstance({ price: 0 })
+        } catch (e) {
+            throwed = true
+        }
+        assert(throwed, "it didn't throw an exception")
+    })
+    it("should not allow max drawable number to be 0", async function(){
+        let throwed = false
+        try {
+            let instance = await newInstance({ max: 0 })
+        } catch (e) {
+            throwed = true
+        }
+        assert(throwed, "it didn't throw an exception")
+    })
+    it("should not allow numbers in ticket to be 0", async function(){
+        let throwed = false
+        try {
+            let instance = await newInstance({ n: 0 })
+        } catch (e) {
+            throwed = true
+        }
+        assert(throwed, "it didn't throw an exception")
+    })
+    it("should not allow numbers in ticket < maxDrawableNumber ", async function(){
+        let throwed = false
+        try {
+            let instance = await newInstance({ n: 10, max: 5 })
+        } catch (e) {
+            throwed = true
+        }
+        assert(throwed, "it didn't throw an exception")
+    })
     it("should create a lottery with my started drawing definitions", async function() {
         let instance = await newInstance({ first: 501 })
 
         assert.equal(await instance.nextDrawing(), 501)
     })
     it("should correctly set next drawing", async function() {
-        let instance = await newInstance({})
+        let instance = await newInstance()
         await instance.setNextDrawing()
         
         assert.equal(await instance.nextDrawing(), 2000)
@@ -27,23 +63,23 @@ contract('The Lothereum contract', (accounts) => {
     })
     describe('when validating ticket numbers', function() {
         it("should check if the array is ordered and the maxnumber is respected", async function() {
-            let instance = await newInstance({})
+            let instance = await newInstance()
             assert.equal(true, await instance.areValidNumbers.call([1,2,3,4], 4))
         })
         it("should invalidate for number > maxnumber", async function() {
-            let instance = await newInstance({})
+            let instance = await newInstance()
             assert.equal(false, await instance.areValidNumbers.call([2], 1))
         })
         it("should invalidate for unordered array", async function() {
-            let instance = await newInstance({})
+            let instance = await newInstance()
             assert.equal(false, await instance.areValidNumbers.call([3,2,1], 60))
         })
         it("should invalidate with two equal values", async function() {
-            let instance = await newInstance({})
+            let instance = await newInstance()
             assert.equal(false, await instance.areValidNumbers.call([3,3,4], 60))
         })
         it("should invalidate a crazy array", async function() {
-            let instance = await newInstance({})
+            let instance = await newInstance()
             assert.equal(false, await instance.areValidNumbers.call([1,3,5,5,9,31,20], 25))
         })
     })
@@ -78,6 +114,32 @@ contract('The Lothereum contract', (accounts) => {
 
             assert.notEqual(ticketCounter, newTicketCounter)
             assert.equal(newTicketCounter, myTicket.ticketId)
+        })
+    })
+    describe('when drawing', function() {
+        describe('winning numbers', function() {
+            it("should allow a new number", async function() {
+                let instance = await newInstance({})
+                assert.equal(true, await instance._validateDrawedNumber.call(1, [2, 3, 4, 5, 8], 6))            
+            })  
+            it("should not allow repeated numbers", async function() {
+                let instance = await newInstance({})
+                assert.equal(false, await instance._validateDrawedNumber.call(1, [2, 3, 4, 5, 1], 6))            
+            })                          
+            it("should not exceed the max length", async function() {
+                let instance = await newInstance({})
+                assert.equal(false, await instance._validateDrawedNumber.call(1, [2, 3, 4, 5, 8, 9], 6))                
+            })
+            it("should sort some random numbers (DANGER)", async function() {
+                let instance = await newInstance({ first: 0 })
+                let currentNumbers = []
+                while(currentNumbers.length < 6){
+                    let drawTransaction = await instance.processDraw()
+                    currentNumbers = drawTransaction.logs.filter(l => l.event == 'NumberWasDrawed')
+                        .reduce((arr, c) => arr.concat([Number(c.args.number)]), currentNumbers)
+                }
+                assert(true)
+            })                    
         })
     })
 })
