@@ -1,6 +1,6 @@
 var Lothereum = artifacts.require("./Lothereum.sol");
-const newInstance = ({interval = [1000], first = 1000, n = 6, max = 60, price = 100} = {}) =>
-    Lothereum.new(interval, first, n, max, price)
+const newInstance = ({interval = [1000], first = 10000000000, n = 6, max = 60, price = 100, distribution = [0, 0, 0, 5, 15, 80]} = {}) =>
+    Lothereum.new(interval, first, n, max, price, distribution)
 
 contract('The Lothereum contract', (accounts) => {
     it("should not allow for a 0 price lottery ticket", async function(){
@@ -39,26 +39,48 @@ contract('The Lothereum contract', (accounts) => {
         }
         assert(throwed, "it didn't throw an exception")
     })
+    it("should require the prizeDistribution to have the same length as n of tickets", async function(){
+        let throwed = false
+        try {
+            let instance = await newInstance({ distribution: [0] })
+        } catch (e) {
+            throwed = true
+        }
+        assert(throwed, "it didn't throw an exception")
+    })
+    it("should require the prizeDistribution to sum 100", async function(){
+        let throwed = false
+        try {
+            let instance = await newInstance({ distribution: [0,0,0,5,15,85] })
+        } catch (e) {
+            throwed = true
+        }
+        assert(throwed, "it didn't throw an exception")
+    })
     it("should create a lottery with my started drawing definitions", async function() {
         let instance = await newInstance({ first: 501 })
 
-        assert.equal(await instance.nextDrawing(), 501)
+        assert.equal(await instance.nextDrawingDate(), 501)
+    })
+    it("should correctly set minimalHitsForPrize", async function() {
+        let instance = await newInstance()
+        assert.equal(await instance.minimalHitsForPrize.call(), 4)
     })
     it("should correctly set next drawing", async function() {
-        let instance = await newInstance()
+        let instance = await newInstance({ first: 1000, interval: [1000]})
         await instance.setNextDrawing()
         
-        assert.equal(await instance.nextDrawing(), 2000)
+        assert.equal(await instance.nextDrawingDate(), 2000)
         assert.equal(await instance.nextDrawingIndex(), 0)
     })
     it("should increment next drawing index", async function() {
         let instance = await newInstance({ interval: [ 500, 700 ], first: 300})
         await instance.setNextDrawing()
-        assert.equal(await instance.nextDrawing(), 800)
+        assert.equal(await instance.nextDrawingDate(), 800)
         assert.equal(await instance.nextDrawingIndex(), 1)
 
         await instance.setNextDrawing()
-        assert.equal(await instance.nextDrawing(), 1500)
+        assert.equal(await instance.nextDrawingDate(), 1500)
         assert.equal(await instance.nextDrawingIndex(), 0)
     })
     describe('when validating ticket numbers', function() {
@@ -115,6 +137,15 @@ contract('The Lothereum contract', (accounts) => {
             assert.notEqual(ticketCounter, newTicketCounter)
             assert.equal(newTicketCounter, myTicket.ticketId)
         })
+        it('should map all numbers in the ticket', async function() {
+            let instance = await newInstance({ price: 100 })
+            let bettingNumbers = [10, 20, 30, 40, 50, 60]
+            await instance.buyTicket(bettingNumbers, { from: accounts[0], value: 100 })
+            // all numbers should have the ticket id inside its array position 0        
+            for (n of bettingNumbers) assert.equal(1, Number(await instance.numbersMap.call(n, 0)))
+            await instance.buyTicket(bettingNumbers, { from: accounts[0], value: 100 })
+            for (n of bettingNumbers) assert.equal(2, Number(await instance.numbersMap.call(n, 1)))            
+        })
     })
     describe('when drawing', function() {
         describe('winning numbers', function() {
@@ -142,70 +173,69 @@ contract('The Lothereum contract', (accounts) => {
             })                    
         })
     })
+    describe("when checking winners", function() {
+        it("should announce a winning ticket", async function() {
+            let instance = await newInstance({ price: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[0], value: 100 })
+            let checkWinnersTransaction = await instance._checkWinners([10,20,30,40,50,60])
+            assert.equal(checkWinnersTransaction.logs.filter(l => l.event == 'AnnounceWinner').map(l => l.args).length, 1)
+        })
+        it("should be in the winners array", async function() {
+            let instance = await newInstance({ price: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[0], value: 100 })
+            await instance._checkWinners([10,20,30,40,50,60])
+            let winner = await instance.winningTickets.call(0)
+            assert.equal(1, Number(winner))
+        })
+        it("should not announce any winner", async function() {
+            let instance = await newInstance({ price: 100 })
+            await instance.buyTicket([11, 22, 33, 44, 56, 59], { from: accounts[0], value: 100 })
+            let checkWinnersTransaction = await instance._checkWinners([10,20,30,40,50,60])
+            assert.equal(checkWinnersTransaction.logs.filter(l => l.event == 'AnnounceWinner').map(l => l.args).length, 0)
+        })
+        it("should distribute prizes", async function() {
+            let instance = await newInstance({ price: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 50, 59], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 19, 29, 39, 49, 59], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 49, 59], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 48, 59], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 47, 59], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 19, 29, 39, 49, 59], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 19, 29, 39, 49, 59], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 19, 29, 39, 49, 59], { from: accounts[0], value: 100 })
+            let checkWinnersTransaction = await instance._checkWinners([10,20,30,40,50,60])
+
+            let prizes = checkWinnersTransaction.logs.filter(l => l.event == 'AnnouncePrize')
+                .map(({args: { hits, numberOfWinners, prize }}) => ({ hits, numberOfWinners, prize }))
+            
+            assert.equal(prizes.find(p => p.hits == 4).numberOfWinners, 3)
+            assert.equal(prizes.find(p => p.hits == 4).prize, 16)
+
+            assert.equal(prizes.find(p => p.hits == 5).numberOfWinners, 1)
+            assert.equal(prizes.find(p => p.hits == 5).prize, 150)
+
+            assert.equal(prizes.find(p => p.hits == 6).numberOfWinners, 2)
+            assert.equal(prizes.find(p => p.hits == 6).prize, 400)
+        })
+        it("should have money in my vault", async function() {
+            let instance = await newInstance({ price: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[1], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 50, 59], { from: accounts[2], value: 100 })
+            await instance.buyTicket([10, 19, 29, 39, 49, 59], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 49, 59], { from: accounts[1], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 48, 59], { from: accounts[2], value: 100 })
+            await instance.buyTicket([10, 20, 30, 40, 47, 59], { from: accounts[0], value: 100 })
+            await instance.buyTicket([10, 19, 29, 39, 49, 59], { from: accounts[1], value: 100 })
+            await instance.buyTicket([10, 19, 29, 39, 49, 59], { from: accounts[2], value: 100 })
+            await instance.buyTicket([10, 19, 29, 39, 49, 59], { from: accounts[0], value: 100 })
+            await instance._checkWinners([10,20,30,40,50,60])
+
+            assert.equal(416, await instance.vault.call(accounts[0]))
+            assert.equal(416, await instance.vault.call(accounts[1]))
+            assert.equal(166, await instance.vault.call(accounts[2]))
+        })
+    })
 })
-
-
-
-// var MetaCoin = artifacts.require("./MetaCoin.sol");
-
-// contract('MetaCoin', function(accounts) {
-//   it("should put 10000 MetaCoin in the first account", function() {
-//     return MetaCoin.deployed().then(function(instance) {
-//       return instance.getBalance.call(accounts[0]);
-//     }).then(function(balance) {
-//       assert.equal(balance.valueOf(), 10000, "10000 wasn't in the first account");
-//     });
-//   });
-//   it("should call a function that depends on a linked library", function() {
-//     var meta;
-//     var metaCoinBalance;
-//     var metaCoinEthBalance;
-
-//     return MetaCoin.deployed().then(function(instance) {
-//       meta = instance;
-//       return meta.getBalance.call(accounts[0]);
-//     }).then(function(outCoinBalance) {
-//       metaCoinBalance = outCoinBalance.toNumber();
-//       return meta.getBalanceInEth.call(accounts[0]);
-//     }).then(function(outCoinBalanceEth) {
-//       metaCoinEthBalance = outCoinBalanceEth.toNumber();
-//     }).then(function() {
-//       assert.equal(metaCoinEthBalance, 2 * metaCoinBalance, "Library function returned unexpected function, linkage may be broken");
-//     });
-//   });
-//   it("should send coin correctly", function() {
-//     var meta;
-
-//     // Get initial balances of first and second account.
-//     var account_one = accounts[0];
-//     var account_two = accounts[1];
-
-//     var account_one_starting_balance;
-//     var account_two_starting_balance;
-//     var account_one_ending_balance;
-//     var account_two_ending_balance;
-
-//     var amount = 10;
-
-//     return MetaCoin.deployed().then(function(instance) {
-//       meta = instance;
-//       return meta.getBalance.call(account_one);
-//     }).then(function(balance) {
-//       account_one_starting_balance = balance.toNumber();
-//       return meta.getBalance.call(account_two);
-//     }).then(function(balance) {
-//       account_two_starting_balance = balance.toNumber();
-//       return meta.sendCoin(account_two, amount, {from: account_one});
-//     }).then(function() {
-//       return meta.getBalance.call(account_one);
-//     }).then(function(balance) {
-//       account_one_ending_balance = balance.toNumber();
-//       return meta.getBalance.call(account_two);
-//     }).then(function(balance) {
-//       account_two_ending_balance = balance.toNumber();
-
-//       assert.equal(account_one_ending_balance, account_one_starting_balance - amount, "Amount wasn't correctly taken from the sender");
-//       assert.equal(account_two_ending_balance, account_two_starting_balance + amount, "Amount wasn't correctly sent to the receiver");
-//     });
-//   });
-// });
