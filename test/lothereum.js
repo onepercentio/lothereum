@@ -1,7 +1,7 @@
 var Lothereum = artifacts.require("./Lothereum.sol");
 const firstDate = Math.round(new Date() / 1000) + 6000
-const newInstance = ({interval = [60], first = firstDate, n = 6, max = 60, price = 3500000000000, distribution = [0, 0, 0, 5, 15, 80]} = {}) =>
-    Lothereum.new(interval, first, n, max, price, distribution)
+const newInstance = ({name = 'MEGA SENA', interval = [60], first = firstDate, n = 6, max = 60, price = 3500000000000, distribution = [0, 0, 0, 5, 15, 80]} = {}) =>
+    Lothereum.new(name, interval, first, n, max, price, distribution)
 
 contract('Lothereum', (accounts) => {
     // Constructor
@@ -102,27 +102,28 @@ contract('Lothereum', (accounts) => {
     }) 
     // Next Drawing
     describe('Drawing interval', () => {
-        // next Drawing
-        it("should correctly set next drawing", async function() {
-            let instance = await newInstance({ interval: [1000]})
-            await instance.setNextDrawing()            
-            assert.equal(Number(await instance.nextDrawingDate()), firstDate + 1000)
-            assert.equal(Number(await instance.nextDrawingIndex()), 0)
-            assert.equal(Number(await instance.drawingCounter()), 2)
+        it("should do nothing if it is not the drawing deadline", async function() {
+            let instance = await newInstance({ interval: [10000]})
+            await instance._nextDrawing(firstDate - 5000)            
+            // it means that we stay still
+            assert.equal(Number(await instance.drawingCounter()), 1)
         })
-        it("should increment next drawing index and counter", async function() {
-            let instance = await newInstance({ interval: [ 200, 400 ]})
-            await instance.setNextDrawing()
+        it("should correctly set next drawing it it'ssssssss timee!!!!", async function() {
+            let instance = await newInstance({ interval: [60, 200]})
+            let trx1 = await instance._nextDrawing(firstDate + 1)            
             assert.equal(Number(await instance.nextDrawingDate()), firstDate + 200)
-            assert.equal(Number(await instance.nextDrawingIndex()), 1)
+            assert.equal(Number(await instance.drawingIndex()), 1)
             assert.equal(Number(await instance.drawingCounter()), 2)
-
-            await instance.setNextDrawing()
-            assert.equal(Number(await instance.nextDrawingDate()), firstDate + 400 + 200)
-            assert.equal(Number(await instance.nextDrawingIndex()), 0)
+            let ret1 = trx1.logs.filter(l => l.event == 'AnnounceDrawing').map(({args: {drawingNumber, status}}) => ({drawingNumber: Number(drawingNumber), status: Number(status)}))
+            assert(2, ret1[0]['status']); // no bets FINISH the drawing abrut
+            let trx2 = await instance._nextDrawing(firstDate + 200 + 1)            
+            assert.equal(Number(await instance.nextDrawingDate()), firstDate + 200 + 60)
+            assert.equal(Number(await instance.drawingIndex()), 0)
             assert.equal(Number(await instance.drawingCounter()), 3)
+            let ret2 = trx2.logs.filter(l => l.event == 'AnnounceDrawing').map(({args: {drawingNumber, status}}) => ({drawingNumber: Number(drawingNumber), status: Number(status)}))            
         })
     })    
+
     // Buying ticket
     describe('Ticket issue', () => {
         describe('validating ticket info', function() {
@@ -171,13 +172,12 @@ contract('Lothereum', (accounts) => {
             it('should tell everyone I bought it', async function() {
                 let instance = await newInstance({ price: 100 })
                 // if this crashes its because we are lazy and didnt use BigNumbers
-                let ticketCounter = Number(await instance.ticketCounter.call())
-                let ticketTransaction = await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[0], value: 100 })
-                let { args: myTicket } = ticketTransaction.logs.find( l => l.event == 'NewTicket')
-                let newTicketCounter = Number(await instance.ticketCounter.call())
-
-                assert.notEqual(ticketCounter, newTicketCounter)
-                assert.equal(newTicketCounter, myTicket.ticketId) 
+                let ticketTransaction1 = await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[2], value: 100 })
+                let { args: myTicket1 } = ticketTransaction1.logs.find( l => l.event == 'NewTicket')
+                assert.equal(1, Number(myTicket1.ticketId))
+                let ticketTransaction2 = await instance.buyTicket([10, 20, 30, 40, 50, 60], { from: accounts[1], value: 100 })
+                let { args: myTicket2 } = ticketTransaction2.logs.find( l => l.event == 'NewTicket')
+                assert.equal(2, Number(myTicket2.ticketId))                
             })
         })
         describe('effects', function() {
@@ -204,33 +204,28 @@ contract('Lothereum', (accounts) => {
             })
         })
     })
-    describe('Drawing the winning numbers', function() {
-            it("should allow a new number", async function() {
-                let instance = await newInstance()
-                assert.equal(false, await instance._numberAlreadyDrawed.call(1, [2, 3, 4, 5, 8]))
-            })  
-            it("should not allow repeated numbers", async function() {
-                let instance = await newInstance({})
-                assert.equal(true, await instance._numberAlreadyDrawed.call(1, [2, 3, 4, 5, 1]))            
-            })                          
-//             it("should not exceed the max length", async function() {
-//                 let instance = await newInstance({})
-//                 assert.equal(false, await instance._validateDrawedNumber.call(1, [2, 3, 4, 5, 8, 9], 6))                
-//             })
-//             it("should sort some random numbers (DANGER)", async function() {
-//                 let instance = await newInstance({ first: 0 })
-//                 let currentNumbers = []
-//                 while(currentNumbers.length < 6){
-//                     let drawTransaction = await instance.processDraw()
-//                     currentNumbers = drawTransaction.logs.filter(l => l.event == 'NumberWasDrawed')
-//                         .reduce((arr, c) => arr.concat([Number(c.args.number)]), currentNumbers)
-//                 }
-//                 assert(true)
-//             })                    
-    })
 })
 
+//     describe('Drawing the winning numbers', function() {
+//             it("should allow a new number", async function() {
+//                 let instance = await newInstance()
+//                 assert.equal(false, await instance._numberAlreadyDrawed.call(1, [2, 3, 4, 5, 8]))
+//             })  
+//             it("should not allow repeated numbers", async function() {
+//                 let instance = await newInstance({})
+//                 assert.equal(true, await instance._numberAlreadyDrawed.call(1, [2, 3, 4, 5, 1]))            
+//             })                          
 
+            // it("should sort some random numbers (DANGER)", async function() {
+            //     let instance = await newInstance()
+            //     let currentNumbers = []
+            //     while(currentNumbers.length < 6) {
+            //         let drawTransaction = await instance.processDraw()
+            //         currentNumbers = drawTransaction.logs.filter(l => l.event == 'NumberWasDrawed')
+            //             .reduce((arr, c) => arr.concat([Number(c.args.number)]), currentNumbers)
+            //     }
+            //     assert(true)
+            // })                    
 
 
 
