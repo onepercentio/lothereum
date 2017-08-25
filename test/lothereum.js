@@ -1,11 +1,20 @@
 var Lothereum = artifacts.require("./Lothereum.sol");
 const firstDate = Math.round(new Date() / 1000) + 6000
-const newInstance = ({name = 'MEGA SENA', interval = [60], first = firstDate, n = 6, max = 60, price = 3500000000000, distribution = [0, 0, 0, 5, 15, 80]} = {}) =>
-    Lothereum.new(name, interval, first, n, max, price, distribution)
+const newInstance = ({name = 'MEGA SENA', interval = [60], first = firstDate, n = 6, max = 60, price = 3500000000000, distribution = [0, 0, 0, 5, 15, 80]} = {}, blockInterval = 8) =>
+    Lothereum.new(name, interval, first, n, max, price, distribution, blockInterval)
 
 contract('Lothereum', (accounts) => {
     // Constructor
     describe('Constructor', () => {
+        it("should not allow block interval lesser then 8", async function() {
+            let throwed = false
+            try {
+                await newInstance({ blockInterval: 7})
+            } catch(e) { 
+                throwed = true
+            }  
+            assert(throwed, "it didn't throw an exception")
+        })
         it("should not allow empty drawing interval or higher then 100 intervals", async function() {
             let throwed = false
             try {

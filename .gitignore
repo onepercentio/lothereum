@@ -1,2 +1,10 @@
 build
 node_modules
+*.swp
+*.swo
+build/
+.DS_Store/
+/coverage
+coverage.json
+allFiredEvents
+scTopics
