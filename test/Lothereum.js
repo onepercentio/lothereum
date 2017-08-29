@@ -173,39 +173,25 @@ contract('Lothereum', function(accounts) {
         });
 
         it('should not allow wrong price', async function() {
-            await lothereum.buyTicket(
-                numbers,
-                {
-                    value: 1,
-                    from: accounts[1]
-                }).should.be.rejectedWith(EVMThrow);
+            await lothereum.buyTicket(numbers, {value: 1, from: accounts[1]}).should.be.rejectedWith(EVMThrow);
         });
 
         it('should not allow disordened numbers i.e [3,2,1]', async function() {
-            await lothereum.buyTicket(
-                [3, 2, 1, 4, 5, 6],
-                {
-                    value: DEFAULT_PRICE,
-                    from: accounts[1]
-                }).should.be.rejectedWith(EVMThrow);
+            await lothereum.buyTicket([3, 2, 1, 4, 5, 6], {value: DEFAULT_PRICE, from: accounts[1]}).should.be.rejectedWith(EVMThrow);
         });
 
         it('should not allow repeated numbers i.e [3,2,3]', async function() {
-            await lothereum.buyTicket(
-                [1, 2, 3, 4, 5, 5],
-                {
-                    value: DEFAULT_PRICE,
-                    from: accounts[1]
-                }).should.be.rejectedWith(EVMThrow);
+            await lothereum.buyTicket([1, 2, 3, 4, 5, 5], {value: DEFAULT_PRICE, from: accounts[1]}).should.be.rejectedWith(EVMThrow);
         });
 
         it('should not allow numbers on ticket != numbers per ticket', async function() {
-            await lothereum.buyTicket(
-                [1, 2],
-                {
-                    value: DEFAULT_PRICE,
-                    from: accounts[1]
-                }).should.be.rejectedWith(EVMThrow);
+            await lothereum.buyTicket([1, 2], {value: DEFAULT_PRICE, from: accounts[1]}).should.be.rejectedWith(EVMThrow);
+        });
+
+        describe('New drawing time', function() {
+            it('should buy ticket to the next drawing', async function() {
+                await lothereum.buyTicket(numbers, {value: DEFAULT_PRICE, from: accounts[1]}).should.be.fulfilled;
+            });
         });
 
     });

@@ -27,8 +27,6 @@ contract Lothereum {
     uint public ticketPrice; // exactly the transaction value to get a ticket*/
     mapping(address => uint) public vault; // keep winners money
 
-    uint32 drawingInProcess; // pointer
-
     // Ticket
     struct Ticket {
         uint16[] numbers;
@@ -86,7 +84,7 @@ contract Lothereum {
         require(_ticketPrice > 0);
         require(_prizeDistribution.length == _numbersPerTicket);
         uint8 prizeDistributionCheck;
-        for (uint8 i; i < _prizeDistribution.length ; i++){
+        for (uint8 i; i < _prizeDistribution.length ; i++) {
             prizeDistributionCheck += _prizeDistribution[i];
             if (minimalHitsForPrize == 0 && _prizeDistribution[i] != 0) minimalHitsForPrize = i + 1;
         }
