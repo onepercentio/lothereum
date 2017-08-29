@@ -190,7 +190,16 @@ contract('Lothereum', function(accounts) {
 
         describe('New drawing time', function() {
             it('should buy ticket to the next drawing', async function() {
-                await lothereum.buyTicket(numbers, {value: DEFAULT_PRICE, from: accounts[1]}).should.be.fulfilled;
+                const { logs: logs1 } = await lothereum.buyTicket(numbers, {value: DEFAULT_PRICE, from: accounts[1]}).should.be.fulfilled;
+                const { args: args1 } = logs1.find(e => e.event === 'NewTicket');
+                Number(args1.drawingNumber).should.be.equal(1);
+                // move time
+                await increaseTimeTo(firstDate + duration.seconds(30));
+                const { logs: logs2 } = await lothereum.buyTicket(numbers, {value: DEFAULT_PRICE, from: accounts[1]}).should.be.fulfilled;
+                const { args: args2 } = logs2.find(e => e.event === 'NewTicket');
+                Number(args2.drawingNumber).should.be.equal(2);
+
+                console.log(logs2);
             });
         });
 
