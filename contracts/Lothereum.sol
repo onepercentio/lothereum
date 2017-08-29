@@ -15,16 +15,17 @@ contract Lothereum {
 
     // Meta attributes
     string public name;
-    uint32 public blockInterval; // Timelapse between one number drawning
+    uint8 public blockInterval; // Timelapse between one number drawing
     uint[] public drawingInterval; // Time interval between consecutive drawings (ms)
     uint public drawingIndex; // current index of the drawing interval array
     uint public nextDrawingDate; // timestamp of next drawing date (unix)
-    uint32 public drawingCounter; // how many drawnings so far
+    uint32 public drawingCounter; // how many drawings so far
     uint8[] public prizeDistribution; // rules of distribution
     uint16 public maxDrawableNumber; // the highest number starting in 1
     uint8 public minimalHitsForPrize;
     uint8 public numbersPerTicket; // how many numbers must have in the ticket
     uint public ticketPrice; // exactly the transaction value to get a ticket*/
+    // use openzepelling contract vault
     mapping(address => uint) public vault; // keep winners money
 
     // Ticket
@@ -40,15 +41,19 @@ contract Lothereum {
         uint[] tickets;
     }
 
+    // Drawing seed generator
+    uint32 seedCounter;
+
     // Events
-    event NewTicket(uint32 drawingNumber, address holder, uint ticketId, uint16[] numbers);
-    event NumberWasDrawed(uint32 drawingNumber, uint16 number);
-    event AnnounceWinner(uint ticketId, uint8 hits, uint32 drawingNumber);
-    event AnnouncePrize(uint8 hits, uint numberOfWinners, uint prize, uint32 drawingNumber);
-    event AnnounceDrawing(uint32 drawingNumber, Status status);
+    event NewTicket(uint32 drawing, address holder, uint ticketId, uint16[] numbers);
+    event NumberWasDrawed(uint32 drawing, uint16 number);
+    event AnnounceDrawing(uint32 drawing, Status status);
+
+    event AnnounceWinner(uint ticketId, uint8 hits, uint32 drawing);
+    event AnnouncePrize(uint8 hits, uint numberOfWinners, uint prize, uint32 drawing);
 
     // Drawing
-    enum Status { Running, Drawing, Awarding, Finished }
+    enum Status { Skipped, Running, Drawing, Drawn, Awarding, Finished }
     struct Drawing {
         Status status;
         uint totalPrize;
@@ -59,6 +64,7 @@ contract Lothereum {
         mapping(uint => Ticket) tickets;
         uint ticketCounter;
         uint nextBlockNumber;
+        bytes32[] seeds;
     }
     mapping(uint32 => Drawing) public draws;
 
@@ -71,7 +77,7 @@ contract Lothereum {
         uint16 _maxDrawableNumber,
         uint _ticketPrice,
         uint8[] _prizeDistribution,
-        uint32 _blockInterval
+        uint8 _blockInterval
         ) {
         // validations
         require(_drawingInterval.length > 0 && _drawingInterval.length < 100);
@@ -89,7 +95,7 @@ contract Lothereum {
             if (minimalHitsForPrize == 0 && _prizeDistribution[i] != 0) minimalHitsForPrize = i + 1;
         }
         require(prizeDistributionCheck == 100);
-        require(_blockInterval > 7);
+        require(_blockInterval > 15 && _blockInterval < 249);
         require(_numbersPerTicket < _maxDrawableNumber); // ex5 numbers with 5 options
 
         // effects
@@ -101,16 +107,19 @@ contract Lothereum {
         ticketPrice = _ticketPrice;
         prizeDistribution = _prizeDistribution;
         blockInterval = _blockInterval;
+
+        // initializations
         drawingIndex = 0;
         drawingCounter = 1;
+        seedCounter = 1;
 
         _setDrawingStatus(drawingCounter, Status.Running);
     }
 
     // Announce the new status
-    function _setDrawingStatus(uint32 drawId, Status _status) internal {
-        draws[drawId].status = _status;
-        AnnounceDrawing(drawId, _status);
+    function _setDrawingStatus(uint32 drawingId, Status newStatus) internal {
+        draws[drawingId].status = newStatus;
+        AnnounceDrawing(drawingId, newStatus);
     }
 
     // Check the order must be crescent and the max number mustnt be lesser then maxDrawable nubmer
@@ -144,7 +153,7 @@ contract Lothereum {
            if (draws[drawingCounter].ticketCounter > 0) {
                draws[drawingCounter].nextBlockNumber = block.number + blockInterval;
                _setDrawingStatus(drawingCounter, Status.Drawing); // put it in drawing mode
-           } else {
+           } else { // if has not just finish
                _setDrawingStatus(drawingCounter, Status.Finished); // if has not end it
            }
            // if has passed a long time move the lottery ahead skipping till there
@@ -155,9 +164,50 @@ contract Lothereum {
                drawingCounter++;
                // TODO event to the skips ???
            }
-           // it's by default but we need to announce it
+           // start new drawing
            _setDrawingStatus(drawingCounter, Status.Running); // if has not end it
        }
+    }
+
+    // Drawn a seed
+    function _drawSeed(uint32 drawingId) internal {
+        // if itsssssss time... !!!!
+        if (block.number => draws[drawingId].nextBlockNumber) {
+            // move to next drawing
+            draws[drawingId].nextBlockNumber = block.number + blockInterval;
+            // draw a number
+            draws[drawingId].seeds.push(block.blockhash(block.number - blockInterval));
+            // check if its the last one
+            if (draws[drawingId].seeds.length == numbersPerTicket) {
+                _setDrawingStatus(drawingId, Status.Drawn);
+            }
+        }
+    }
+
+    // Is it time(block) to draw a new number
+    function _isDrawing() internal {
+        // theres is something on the line (online!!!!)
+        if (drawingCounter > seedCounter) {
+            // find next in drawing states
+            for (; seedCounter <= drawingCounter; seedCounter++) {
+                if (draws[seedCounter].status == Status.Drawing) {
+                    _drawSeed(seedCounter);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Drawn the whole numbers ONLY US NO GAS TO THE USER
+    function _drawResult(uint32 drawingId) {
+        // process it only if is ready
+        if (draws[drawingId].status == Status.Drawn) {
+            bytes32 seed = block.blockhash(block.number - blockInterval);
+            // JOHN - ALGORITHM OF HEAVEN
+            // check winners
+            // fund vault
+            _setDrawingStatus(drawingId, Status.Awarding);
+        }
     }
 
     // Ticket purchase
@@ -169,6 +219,9 @@ contract Lothereum {
 
         // this drawing is valid or should move the next one
         _nextDrawing();
+
+        // check if is drawing numbers
+        _isDrawing();
 
         // effects
         draws[drawingCounter].ticketCounter += 1; // increment ticket

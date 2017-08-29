@@ -19,17 +19,18 @@ var Lothereum = artifacts.require('Lothereum');
 // constants
 const DEFAULT_NAME = 'MEGA SENA';
 const DEFAULT_PRICE = 35000;
-const firstDate = Math.round(new Date() / 1000) + 6000;
+const DEFAULT_INTERVAL = 60;
+var firstDate;
 const newInstance = (
     {
         name = DEFAULT_NAME,
-        interval = [60],
+        interval = [DEFAULT_INTERVAL],
         first = firstDate,
         n = 6,
         max = 60,
         price = DEFAULT_PRICE,
         distribution = [0, 0, 0, 5, 15, 80],
-        blockInterval = 8
+        blockInterval = 16
     } = {}
 ) => Lothereum.new(name, interval, first, n, max, price, distribution, blockInterval)
 
@@ -39,6 +40,7 @@ contract('Lothereum', function(accounts) {
     before(async function() {
         //Advance to the next block to correctly read time in the solidity "now" function interpreted by testrpc
         await advanceBlock();
+        firstDate = latestTime() + duration.seconds(10);
     });
 
     describe('Deployment', function() {
@@ -112,9 +114,12 @@ contract('Lothereum', function(accounts) {
             }).should.be.rejectedWith(EVMThrow);
         });
 
-        it('should not create contract with invalid block interval (< 8)', async function() {
+        it('should not create contract with invalid block interval (16 - 248)', async function() {
             await newInstance({
-                blockInterval: 7
+                blockInterval: 15
+            }).should.be.rejectedWith(EVMThrow);
+            await newInstance({
+                blockInterval: 250
             }).should.be.rejectedWith(EVMThrow);
         });
 
@@ -147,7 +152,7 @@ contract('Lothereum', function(accounts) {
             should.exist(event);
 
             event.args.holder.should.equal(accounts[1])
-            event.args.drawingNumber.should.be.bignumber.equal(1)
+            event.args.drawing.should.be.bignumber.equal(1)
             event.args.ticketId.should.be.bignumber.equal(1)
             for (let i = 0; i < event.args.numbers.length; i++) (new BigNumber(event.args.numbers[i])).should.be.bignumber.equal(numbers[i])
 
@@ -189,18 +194,38 @@ contract('Lothereum', function(accounts) {
         });
 
         describe('New drawing time', function() {
-            it('should buy ticket to the next drawing', async function() {
+            it('should start a new drawing and set the status of previous to drawing when it has tickets', async function() {
                 const { logs: logs1 } = await lothereum.buyTicket(numbers, {value: DEFAULT_PRICE, from: accounts[1]}).should.be.fulfilled;
                 const { args: args1 } = logs1.find(e => e.event === 'NewTicket');
-                Number(args1.drawingNumber).should.be.equal(1);
+                Number(args1.drawing).should.be.equal(1);
+                const nextDrawingDate1 = await lothereum.nextDrawingDate();
+                const drawingCounter1 = await lothereum.drawingCounter();
+
                 // move time
-                await increaseTimeTo(firstDate + duration.seconds(30));
+                await increaseTimeTo(firstDate + duration.seconds(51));
+
                 const { logs: logs2 } = await lothereum.buyTicket(numbers, {value: DEFAULT_PRICE, from: accounts[1]}).should.be.fulfilled;
                 const { args: args2 } = logs2.find(e => e.event === 'NewTicket');
-                Number(args2.drawingNumber).should.be.equal(2);
+                Number(args2.drawing).should.be.equal(2);
 
-                console.log(logs2);
+                // should be the first ticket of this new drawing
+                Number(args2.ticketId).should.be.equal(1);
+
+                logs2.filter(e => e.event === 'AnnounceDrawing').map(({ args }) => {
+                    if (Number(args.drawing) == 1) {
+                        Number(args.status).should.be.equal(2); // expect to be in Drawing states
+                    } else {
+                        Number(args.status).should.be.equal(1); // expect to be in Openning state
+                    }
+                });
+
+                const nextDrawingDate2 = await lothereum.nextDrawingDate();
+                const drawingCounter2 = await lothereum.drawingCounter();
+
+                (nextDrawingDate2 - nextDrawingDate1).should.be.equal(DEFAULT_INTERVAL);
+                (drawingCounter2 - drawingCounter1).should.be.equal(1);
             });
+            // TODO: test skipped drawings
         });
 
     });
