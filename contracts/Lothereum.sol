@@ -37,6 +37,7 @@ contract Lothereum {
 
     // Winning
     struct WinningBets {
+        uint prize;
         uint prizeShare;
         uint[] tickets;
     }
@@ -45,19 +46,19 @@ contract Lothereum {
     uint32 seedCounter;
 
     // Events
-    event NewTicket(uint32 drawing, address holder, uint ticketId, uint16[] numbers);
+    event NewTicket(uint32 drawing, address holder, uint ticket, uint16[] numbers);
     event NumberWasDrawed(uint32 drawing, uint16 number);
     event AnnounceDrawing(uint32 drawing, Status status);
-
-    event AnnounceWinner(uint ticketId, uint8 hits, uint32 drawing);
-    event AnnouncePrize(uint8 hits, uint numberOfWinners, uint prize, uint32 drawing);
+    event AnnounceWinner(uint32 drawing, uint ticket, uint8 hits);
+    event AnnouncePrize(uint32 drawing, uint8 hits, uint numberOfWinners, uint prizeShare);
+    event AccumulatedPrizeMoved(uint32 fromDrawing, uint total, uint32 toDrawing);
 
     // Drawing
     enum Status { Skipped, Running, Drawing, Drawn, Awarding, Finished }
     struct Drawing {
         Status status;
         uint totalPrize;
-        mapping(uint8 => WinningBets) winners;
+        mapping(uint8 => WinningBets) winnersPerHit;
         uint[] winningTickets; // tickets jackpot
         uint16[] winningNumbers; // the numbers drawed
         mapping(uint16 => uint[]) numbersMap; // map numbers per ticket
@@ -80,8 +81,9 @@ contract Lothereum {
         uint8 _blockInterval
         ) {
         // validations
+        // TODO: transform magic numbers into CONST fgs!
         require(_drawingInterval.length > 0 && _drawingInterval.length < 100);
-        for (uint8 j; j < _drawingInterval.length ; j++) {
+        for (uint8 j = 0; j < _drawingInterval.length ; j++) {
             require(_drawingInterval[j] >= 60);
         }
         require(_firstDrawingDate > now);
@@ -90,7 +92,7 @@ contract Lothereum {
         require(_ticketPrice > 0);
         require(_prizeDistribution.length == _numbersPerTicket);
         uint8 prizeDistributionCheck;
-        for (uint8 i; i < _prizeDistribution.length ; i++) {
+        for (uint8 i = 0; i < _prizeDistribution.length ; i++) {
             prizeDistributionCheck += _prizeDistribution[i];
             if (minimalHitsForPrize == 0 && _prizeDistribution[i] != 0) {
                 minimalHitsForPrize = i + 1;
@@ -127,10 +129,10 @@ contract Lothereum {
     // Check the order must be crescent and the max number mustnt be lesser then maxDrawable nubmer
     // TODO: change from constant -> pure
     function _areValidNumbers(uint16[] numbers, uint16 maxNumber) internal constant returns (bool) {
-        if (numbers[numbers.length - 1] > maxNumber) 
+        if (numbers[numbers.length - 1] > maxNumber)
             return false;
-        for (uint8 i; i < numbers.length - 1; i++) {
-            if (numbers[i] >= numbers[i + 1]) 
+        for (uint8 i = 0; i < numbers.length - 1; i++) {
+            if (numbers[i] >= numbers[i + 1])
                 return false;
         }
         return true;
@@ -138,7 +140,7 @@ contract Lothereum {
 
     // To make the drawing easier
     function _mapTicketNumbers(uint16[] numbers, uint ticketId, uint32 drawingId) {
-        for (uint8 i; i < numbers.length; i++) {
+        for (uint8 i = 0; i < numbers.length; i++) {
             draws[drawingId].numbersMap[numbers[i]].push(ticketId);
         }
     }
@@ -202,10 +204,11 @@ contract Lothereum {
         }
     }
 
-    // Drawn the whole numbers ONLY US NO GAS TO THE USER
-    function _drawResult(uint32 drawingId) {
+    // Drawn the numbers
+    function drawNumber(uint32 drawingId) {
         // process it only if is ready
         if (draws[drawingId].status == Status.Drawn) {
+            // and the wizard says: THE PAST SHALL NOT CHANGE
             bytes32 seed = block.blockhash(block.number - blockInterval);
             uint currentIndex = draws[drawingId].winningNumbers.length;
             bytes32 numberSeed = keccak256(seed, draws[drawingId].seeds[currentIndex]);
@@ -224,9 +227,6 @@ contract Lothereum {
 
             if (draws[drawingId].winningNumbers.length == numbersPerTicket) {
                 _setDrawingStatus(drawingId, Status.Awarding);
-                // i have finished drawing do some stuff here
-                // check winners
-                // fund vault
             }
         }
     }
@@ -267,43 +267,67 @@ contract Lothereum {
         revert();
     }
 
-    // results
-    function _checkWinners(uint32 drawingId) {
-        // first we flag all winning tickets
-        uint16 number;
-        uint ticketId;
-        for (uint8 i; i < draws[drawingId].winningNumbers.length; i++) {
-            // this is all ticket ids that bet in number "winningNumbers[i]"
-            number = draws[drawingId].winningNumbers[i];
-            for (uint j = 0; j < draws[drawingId].numbersMap[number].length; j++) {
-                ticketId = draws[drawingId].numbersMap[number][j];
-                // save the lottery hits
-                draws[drawingId].tickets[ticketId].hits++;
-                 // if hit enough numbers = least numbers to prize add to winners
-                if (draws[drawingId].tickets[ticketId].hits == minimalHitsForPrize) {
-                    draws[drawingId].winningTickets.push(ticketId);
+    // deliver the prize
+    function results(uint32 drawingId) {
+        // process it only if is ready
+        if (draws[drawingId].status == Status.Awarding) {
+            uint16 number;
+            uint8 hits;
+            uint ticketId;
+            // search for all tickets that winning something
+            for (uint8 i = 0; i < draws[drawingId].winningNumbers.length; i++) {
+                // this is all ticket ids that bet in number "winningNumbers[i]"
+                number = draws[drawingId].winningNumbers[i];
+                for (uint j = 0; j < draws[drawingId].numbersMap[number].length; j++) {
+                    ticketId = draws[drawingId].numbersMap[number][j];
+                    // save the lottery hits
+                    draws[drawingId].tickets[ticketId].hits++;
+                     // if hit enough numbers = least numbers to prize add to winners
+                    if (draws[drawingId].tickets[ticketId].hits == minimalHitsForPrize) {
+                        draws[drawingId].winningTickets.push(ticketId);
+                    }
                 }
             }
-        }
-        // then, we distribute the available prizes
-        for (uint8 hits = minimalHitsForPrize; hits <= numbersPerTicket; hits++) {
-            uint totalPrizeForNHits = (totalPrize * prizeDistribution[hits-1]) / 100;
-            for (uint w = 0; w < winningTickets.length; w++) {
-                if (tickets[winningTickets[w]].hits == hits) {
-                    winners[hits].tickets.push(winningTickets[w]);
-                    AnnounceWinner(winningTickets[w], hits, drawingCounter);
-                 }
+
+            // map all winining bets per hits
+            for (uint w = 0; w < draws[drawingId].winningTickets.length; w++) {
+                ticketId = draws[drawingId].winningTickets[w];
+                hits = draws[drawingId].tickets[ticketId].hits;
+                draws[drawingId].winnersPerHit[hits].tickets.push(ticketId);
+                AnnounceWinner(drawingId, ticketId, hits);
              }
-             if (winners[hits].tickets.length > 0) {
-                winners[hits].prizeShare = totalPrizeForNHits / winners[hits].tickets.length;
-                AnnouncePrize(hits, winners[hits].tickets.length, winners[hits].prizeShare, drawingCounter);
-                for (uint p = 0; p < winners[hits].tickets.length; p++) {
-                    vault[tickets[winners[hits].tickets[p]].holder] += winners[hits].prizeShare;
+
+            // TODO remove 1% fee - remove ETH foundation fee
+            // prize share calculation
+            uint noWinnersAmount;
+            for (hits = minimalHitsForPrize; hits <= numbersPerTicket; hits++) {
+                draws[drawingId].winnersPerHit[hits].prize = (draws[drawingId].totalPrize * prizeDistribution[hits - 1]) / 100;
+                if (draws[drawingId].winnersPerHit[hits].tickets.length > 0) {
+                    // we got winners
+                    draws[drawingId].winnersPerHit[hits].prizeShare = (draws[drawingId].winnersPerHit[hits].prize / draws[drawingId].winnersPerHit[hits].tickets.length);
+                } else {
+                    // no winners share = prize
+                    draws[drawingId].winnersPerHit[hits].prizeShare = draws[drawingId].winnersPerHit[hits].prize;
+                    noWinnersAmount += draws[drawingId].winnersPerHit[hits].prize;
                 }
+                AnnouncePrize(drawingId, hits, draws[drawingId].winnersPerHit[hits].tickets.length, draws[drawingId].winnersPerHit[hits].prizeShare);
             }
+            // move all money without winners (diference) to the current drawing
+            if (noWinnersAmount > 0) {
+                draws[drawingCounter].totalPrize += noWinnersAmount;
+                AccumulatedPrizeMoved(drawingId, noWinnersAmount, drawingCounter);
+            }
+
+            // vault TODO use the Openzepelling stuff
+            // deposit all money to the winners
+            for (uint v = 0; v < draws[drawingId].winningTickets.length; v++) {
+                ticketId = draws[drawingId].winningTickets[v];
+                hits = draws[drawingId].tickets[ticketId].hits;
+                vault[draws[drawingId].tickets[ticketId].holder] += draws[drawingId].winnersPerHit[hits].prizeShare;
+            }
+
+            // set to the payment window status
+            _setDrawingStatus(drawingId, Status.Finished);
         }
     }
 }
-
-//0.000000000000001
-//"MEGA_SENA", [300,200], 0, 6, 60, 1000, [0,0,0,0,0,100], 16

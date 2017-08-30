@@ -153,7 +153,7 @@ contract('Lothereum', function(accounts) {
 
             event.args.holder.should.equal(accounts[1])
             event.args.drawing.should.be.bignumber.equal(1)
-            event.args.ticketId.should.be.bignumber.equal(1)
+            event.args.ticket.should.be.bignumber.equal(1)
             for (let i = 0; i < event.args.numbers.length; i++) (new BigNumber(event.args.numbers[i])).should.be.bignumber.equal(numbers[i])
 
             Number((await lothereum.draws(1))[1]).should.be.equal(DEFAULT_PRICE);
@@ -209,7 +209,7 @@ contract('Lothereum', function(accounts) {
                 Number(args2.drawing).should.be.equal(2);
 
                 // should be the first ticket of this new drawing
-                Number(args2.ticketId).should.be.equal(1);
+                Number(args2.ticket).should.be.equal(1);
 
                 logs2.filter(e => e.event === 'AnnounceDrawing').map(({ args }) => {
                     if (Number(args.drawing) == 1) {
