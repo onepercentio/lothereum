@@ -92,7 +92,9 @@ contract Lothereum {
         uint8 prizeDistributionCheck;
         for (uint8 i; i < _prizeDistribution.length ; i++) {
             prizeDistributionCheck += _prizeDistribution[i];
-            if (minimalHitsForPrize == 0 && _prizeDistribution[i] != 0) minimalHitsForPrize = i + 1;
+            if (minimalHitsForPrize == 0 && _prizeDistribution[i] != 0) {
+                minimalHitsForPrize = i + 1;
+            }
         }
         require(prizeDistributionCheck == 100);
         require(_blockInterval > 15 && _blockInterval < 249);
@@ -125,9 +127,11 @@ contract Lothereum {
     // Check the order must be crescent and the max number mustnt be lesser then maxDrawable nubmer
     // TODO: change from constant -> pure
     function _areValidNumbers(uint16[] numbers, uint16 maxNumber) internal constant returns (bool) {
-        if (numbers[numbers.length - 1] > maxNumber) return false;
+        if (numbers[numbers.length - 1] > maxNumber) 
+            return false;
         for (uint8 i; i < numbers.length - 1; i++) {
-            if (numbers[i] >= numbers[i + 1]) return false;
+            if (numbers[i] >= numbers[i + 1]) 
+                return false;
         }
         return true;
     }
@@ -172,7 +176,7 @@ contract Lothereum {
     // Drawn a seed
     function _drawSeed(uint32 drawingId) internal {
         // if itsssssss time... !!!!
-        if (block.number => draws[drawingId].nextBlockNumber) {
+        if (block.number >= draws[drawingId].nextBlockNumber) {
             // move to next drawing
             draws[drawingId].nextBlockNumber = block.number + blockInterval;
             // draw a number
@@ -203,10 +207,27 @@ contract Lothereum {
         // process it only if is ready
         if (draws[drawingId].status == Status.Drawn) {
             bytes32 seed = block.blockhash(block.number - blockInterval);
-            // JOHN - ALGORITHM OF HEAVEN
-            // check winners
-            // fund vault
-            _setDrawingStatus(drawingId, Status.Awarding);
+            uint currentIndex = draws[drawingId].winningNumbers.length;
+            bytes32 numberSeed = keccak256(seed, draws[drawingId].seeds[currentIndex]);
+            uint16 drawnNumber = (uint16(numberSeed) % maxDrawableNumber) + 1;
+            bool notDrawnYet = true;
+            for (uint i = 0; i < draws[drawingId].winningNumbers.length; i++) {
+                if (draws[drawingId].winningNumbers[i] == drawnNumber) {
+                    notDrawnYet = false;
+                    break;
+                }
+            }
+            if (notDrawnYet) {
+                draws[drawingId].winningNumbers.push(drawnNumber);
+                NumberWasDrawed(drawingId, drawnNumber);
+            }
+
+            if (draws[drawingId].winningNumbers.length == numbersPerTicket) {
+                _setDrawingStatus(drawingId, Status.Awarding);
+                // i have finished drawing do some stuff here
+                // check winners
+                // fund vault
+            }
         }
     }
 
@@ -246,3 +267,6 @@ contract Lothereum {
         revert();
     }
 }
+
+//0.000000000000001
+//"MEGA_SENA", [300,200], 0, 6, 60, 1000, [0,0,0,0,0,100], 16
