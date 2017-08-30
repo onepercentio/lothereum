@@ -22,7 +22,7 @@ contract Lothereum {
     uint32 public drawingCounter; // how many drawings so far
     uint8[] public prizeDistribution; // rules of distribution
     uint16 public maxDrawableNumber; // the highest number starting in 1
-    uint8 public minimalHitsForPrize;
+    uint8 public minimalHitsForPrize; // first prize at this quantity (problably)
     uint8 public numbersPerTicket; // how many numbers must have in the ticket
     uint public ticketPrice; // exactly the transaction value to get a ticket*/
     // use openzepelling contract vault
@@ -244,5 +244,42 @@ contract Lothereum {
     // Contract doesnt accept money w/o a ticket
     function () payable {
         revert();
+    }
+
+    // results
+    function _checkWinners(uint32 drawingId) {
+        // first we flag all winning tickets
+        uint16 number;
+        uint ticketId;
+        for (uint8 i; i < draws[drawingId].winningNumbers.length; i++) {
+            // this is all ticket ids that bet in number "winningNumbers[i]"
+            number = draws[drawingId].winningNumbers[i];
+            for (uint j = 0; j < draws[drawingId].numbersMap[number].length; j++) {
+                ticketId = draws[drawingId].numbersMap[number][j];
+                // save the lottery hits
+                draws[drawingId].tickets[ticketId].hits++;
+                 // if hit enough numbers = least numbers to prize add to winners
+                if (draws[drawingId].tickets[ticketId].hits == minimalHitsForPrize) {
+                    draws[drawingId].winningTickets.push(ticketId);
+                }
+            }
+        }
+        // then, we distribute the available prizes
+        for (uint8 hits = minimalHitsForPrize; hits <= numbersPerTicket; hits++) {
+            uint totalPrizeForNHits = (totalPrize * prizeDistribution[hits-1]) / 100;
+            for (uint w = 0; w < winningTickets.length; w++) {
+                if (tickets[winningTickets[w]].hits == hits) {
+                    winners[hits].tickets.push(winningTickets[w]);
+                    AnnounceWinner(winningTickets[w], hits, drawingCounter);
+                 }
+             }
+             if (winners[hits].tickets.length > 0) {
+                winners[hits].prizeShare = totalPrizeForNHits / winners[hits].tickets.length;
+                AnnouncePrize(hits, winners[hits].tickets.length, winners[hits].prizeShare, drawingCounter);
+                for (uint p = 0; p < winners[hits].tickets.length; p++) {
+                    vault[tickets[winners[hits].tickets[p]].holder] += winners[hits].prizeShare;
+                }
+            }
+        }
     }
 }
