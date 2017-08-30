@@ -13,6 +13,9 @@ pragma solidity ^0.4.13;
  */
 contract Lothereum {
 
+    address public constant ETH_TIPJAR = 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359;
+    address public constant ONE_TIPJAR = 0x489490C66450E41e951730A5FD5e803D422B25f1;
+
     // Meta attributes
     string public name;
     uint8 public blockInterval; // Timelapse between one number drawing
@@ -57,7 +60,7 @@ contract Lothereum {
     enum Status { Skipped, Running, Drawing, Drawn, Awarding, Finished }
     struct Drawing {
         Status status;
-        uint totalPrize;
+        uint total;
         mapping(uint8 => WinningBets) winnersPerHit;
         uint[] winningTickets; // tickets jackpot
         uint16[] winningNumbers; // the numbers drawed
@@ -66,6 +69,9 @@ contract Lothereum {
         uint ticketCounter;
         uint nextBlockNumber;
         bytes32[] seeds;
+        uint feeOnePercent;
+        uint donationETHF;
+        uint prize;
     }
     mapping(uint32 => Drawing) public draws;
 
@@ -146,33 +152,44 @@ contract Lothereum {
     }
 
     // Expose the map of numbers x ticket
-    // TODO: change from constant -> view
+    // TODO: change from constant -> view (its for tests only remove to __DEPLOY__)
     function numbersMap(uint32 drawingId, uint16 number) public constant returns (uint[]) {
         return draws[drawingId].numbersMap[number];
     }
 
     // Is it time to move to next drawing?
     function _nextDrawing() internal {
-       // if itsssssss time....!!!!
-       if (nextDrawingDate <= now) {
-           // if the current drawing has betters (tickets > 0)
-           if (draws[drawingCounter].ticketCounter > 0) {
-               draws[drawingCounter].nextBlockNumber = block.number + blockInterval;
-               _setDrawingStatus(drawingCounter, Status.Drawing); // put it in drawing mode
-           } else { // if has not just finish
-               _setDrawingStatus(drawingCounter, Status.Finished); // if has not end it
-           }
-           // if has passed a long time move the lottery ahead skipping till there
-           // this gas is on the user but there's nothing we can do about it :D
-           for (uint32 i = 0; nextDrawingDate <= now; i++) {
-               drawingIndex = (drawingIndex + 1) % drawingInterval.length;
-               nextDrawingDate += drawingInterval[drawingIndex];
-               drawingCounter++;
-               // TODO event to the skips ???
-           }
-           // start new drawing
-           _setDrawingStatus(drawingCounter, Status.Running); // if has not end it
-       }
+        // freeze data
+        uint prizeToMove = draws[drawingCounter].total;
+        uint32 drawingId = drawingCounter;
+        // if itsssssss time....!!!!
+        if (nextDrawingDate <= now) {
+            // if the current drawing has betters (tickets > 0)
+            if (draws[drawingCounter].ticketCounter > 0) {
+                draws[drawingCounter].nextBlockNumber = block.number + blockInterval;
+                prizeToMove = 0; // reset if it has betters
+                _setDrawingStatus(drawingCounter, Status.Drawing); // put it in drawing mode
+            } else { // if has not just finish
+                _setDrawingStatus(drawingCounter, Status.Finished); // if has not end it
+                // if its finished here it means that no bets, so we have to transport the prizeToMove
+            }
+            // if has passed a long time move the lottery ahead skipping till there
+            // this gas is on the user but there's nothing we can do about it :D
+            while (nextDrawingDate <= now) {
+                drawingIndex = (drawingIndex + 1) % drawingInterval.length;
+                nextDrawingDate += drawingInterval[drawingIndex];
+                drawingCounter++;
+                // TODO event to the skips ???
+            }
+            // move prize (no betters - in case of no winners the prize is moved on result function)
+            if (prizeToMove > 0) {
+                draws[drawingId].total = 0; // reset
+                draws[drawingCounter].total += prizeToMove;
+                AccumulatedPrizeMoved(drawingId, prizeToMove, drawingCounter);
+            }
+            // start new drawing
+            _setDrawingStatus(drawingCounter, Status.Running); // if has not end it
+        }
     }
 
     // Drawn a seed
@@ -255,7 +272,7 @@ contract Lothereum {
         });
 
         // add value to the total prize
-        draws[drawingCounter].totalPrize += msg.value;
+        draws[drawingCounter].total += msg.value;
         _mapTicketNumbers(numbers, draws[drawingCounter].ticketCounter, drawingCounter);
 
         // actions
@@ -297,11 +314,20 @@ contract Lothereum {
                 AnnounceWinner(drawingId, ticketId, hits);
              }
 
-            // TODO remove 1% fee - remove ETH foundation fee
+            // 1% is our fee and our fee is our name :D
+            draws[drawingId].feeOnePercent = draws[drawingId].total / 100;
+            // 5% goes to the eth foundation (love ya!)
+            draws[drawingId].donationETHF = (draws[drawingId].total * 5) / 100;
+            draws[drawingId].prize = draws[drawingId].total - draws[drawingId].feeOnePercent - draws[drawingId].donationETHF;
+
+            vault[ONE_TIPJAR] += draws[drawingId].feeOnePercent;
+            vault[ETH_TIPJAR] += draws[drawingId].donationETHF;
+
             // prize share calculation
             uint noWinnersAmount;
             for (hits = minimalHitsForPrize; hits <= numbersPerTicket; hits++) {
-                draws[drawingId].winnersPerHit[hits].prize = (draws[drawingId].totalPrize * prizeDistribution[hits - 1]) / 100;
+                // no winners for that number of hits **
+                draws[drawingId].winnersPerHit[hits].prize = (draws[drawingId].prize * prizeDistribution[hits - 1]) / 100;
                 if (draws[drawingId].winnersPerHit[hits].tickets.length > 0) {
                     // we got winners
                     draws[drawingId].winnersPerHit[hits].prizeShare = (draws[drawingId].winnersPerHit[hits].prize / draws[drawingId].winnersPerHit[hits].tickets.length);
@@ -312,9 +338,11 @@ contract Lothereum {
                 }
                 AnnouncePrize(drawingId, hits, draws[drawingId].winnersPerHit[hits].tickets.length, draws[drawingId].winnersPerHit[hits].prizeShare);
             }
+
             // move all money without winners (diference) to the current drawing
             if (noWinnersAmount > 0) {
-                draws[drawingCounter].totalPrize += noWinnersAmount;
+                // current drawing receives it all
+                draws[drawingCounter].total += noWinnersAmount;
                 AccumulatedPrizeMoved(drawingId, noWinnersAmount, drawingCounter);
             }
 
