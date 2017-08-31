@@ -54,6 +54,7 @@ contract Lothereum {
     event AnnounceDrawing(uint32 drawing, Status status);
     event AnnounceWinner(uint32 drawing, uint ticket, uint8 hits);
     event AnnouncePrize(uint32 drawing, uint8 hits, uint numberOfWinners, uint prizeShare);
+    event AnnounceSeed(uint32 drawing, uint seed);
     event AccumulatedPrizeMoved(uint32 fromDrawing, uint total, uint32 toDrawing);
 
     // Drawing
@@ -199,6 +200,7 @@ contract Lothereum {
             // move to next drawing
             draws[drawingId].nextBlockNumber = block.number + blockInterval;
             // draw a number
+            AnnounceSeed(drawingId, draws[drawingId].seeds.length);
             draws[drawingId].seeds.push(block.blockhash(block.number - blockInterval));
             // check if its the last one
             if (draws[drawingId].seeds.length >= numbersPerTicket) {
