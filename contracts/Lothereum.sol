@@ -31,6 +31,9 @@ contract Lothereum {
     // use openzepelling contract vault
     mapping(address => uint) public vault; // keep winners money
 
+    // Drawing seed generator
+    uint32 public seedCounter;
+
     // Ticket
     struct Ticket {
         uint16[] numbers;
@@ -45,9 +48,6 @@ contract Lothereum {
         uint[] tickets;
     }
 
-    // Drawing seed generator
-    uint32 public seedCounter;
-
     // Events
     event NewTicket(uint32 drawing, address holder, uint ticket, uint16[] numbers);
     event NumberWasDrawed(uint32 drawing, uint16 number);
@@ -56,6 +56,7 @@ contract Lothereum {
     event AnnouncePrize(uint32 drawing, uint8 hits, uint numberOfWinners, uint prizeShare);
     event AnnounceSeed(uint32 drawing, uint seed);
     event AccumulatedPrizeMoved(uint32 fromDrawing, uint total, uint32 toDrawing);
+    event PrizeWithdraw(address winner, uint prize);
 
     // Drawing
     enum Status { Skipped, Running, Drawing, Drawn, Awarding, Finished }
@@ -203,7 +204,8 @@ contract Lothereum {
             AnnounceSeed(drawingId, draws[drawingId].seeds.length);
             draws[drawingId].seeds.push(block.blockhash(block.number - blockInterval));
             // check if its the last one
-            if (draws[drawingId].seeds.length >= numbersPerTicket) {
+            if (draws[drawingId].seeds.length == numbersPerTicket) {
+                seedCounter++; // move to the next contract if finished the seeding process
                 _setDrawingStatus(drawingId, Status.Drawn);
             }
         }
@@ -214,12 +216,13 @@ contract Lothereum {
         // theres is something on the line (online!!!!)
         if (drawingCounter > seedCounter) {
             // find next in drawing states
-            while (seedCounter <= drawingCounter) {
+            while (seedCounter < drawingCounter) {
                 if (draws[seedCounter].status == Status.Drawing) {
                     _drawSeed(seedCounter);
-                    break;
+                    return; // it is still drawing seeds
+                } else if (draws[seedCounter].status == Status.Skipped) {
+                    seedCounter++; // move on
                 }
-                seedCounter++;
             }
         }
     }
@@ -252,7 +255,7 @@ contract Lothereum {
     }
 
     // Ticket purchase
-    function buyTicket(uint16[] numbers) payable {
+    function buyTicket(uint16[] numbers, address withdraw) payable {
         // validations
         require(msg.value == ticketPrice);
         require(numbers.length == numbersPerTicket);
@@ -270,7 +273,7 @@ contract Lothereum {
         // add the new ticket
         draws[drawingCounter].tickets[draws[drawingCounter].ticketCounter] = Ticket({
             numbers: numbers,
-            holder: msg.sender,
+            holder: (withdraw != 0x0 ? withdraw : msg.sender),
             hits: 0
         });
 
@@ -282,9 +285,19 @@ contract Lothereum {
         NewTicket(drawingCounter, msg.sender, draws[drawingCounter].ticketCounter, numbers);
     }
 
-    // Contract doesnt accept money w/o a ticket
+    // Contract accept money and add it in the total of current drawing
     function () payable {
-        revert();
+        draws[drawingCounter].total += msg.value;
+    }
+
+    // Grab your prize !
+    function prizeDelivery(address winner) {
+        uint amount = vault[winner];
+        if (amount > 0) {
+            vault[winner] = 0;
+            winner.transfer(amount);
+            PrizeWithdraw(winner, amount);
+        }
     }
 
     // deliver the prize
