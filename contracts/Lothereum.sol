@@ -46,7 +46,7 @@ contract Lothereum {
     }
 
     // Drawing seed generator
-    uint32 seedCounter;
+    uint32 public seedCounter;
 
     // Events
     event NewTicket(uint32 drawing, address holder, uint ticket, uint16[] numbers);
@@ -201,7 +201,7 @@ contract Lothereum {
             // draw a number
             draws[drawingId].seeds.push(block.blockhash(block.number - blockInterval));
             // check if its the last one
-            if (draws[drawingId].seeds.length == numbersPerTicket) {
+            if (draws[drawingId].seeds.length >= numbersPerTicket) {
                 _setDrawingStatus(drawingId, Status.Drawn);
             }
         }
@@ -212,11 +212,12 @@ contract Lothereum {
         // theres is something on the line (online!!!!)
         if (drawingCounter > seedCounter) {
             // find next in drawing states
-            for (; seedCounter <= drawingCounter; seedCounter++) {
+            while (seedCounter <= drawingCounter) {
                 if (draws[seedCounter].status == Status.Drawing) {
                     _drawSeed(seedCounter);
                     break;
                 }
+                seedCounter++;
             }
         }
     }
