@@ -147,7 +147,7 @@ contract Lothereum {
     }
 
     // To make the drawing easier
-    function _mapTicketNumbers(uint16[] numbers, uint ticketId, uint32 drawingId) {
+    function _mapTicketNumbers(uint16[] numbers, uint ticketId, uint32 drawingId) internal {
         for (uint8 i = 0; i < numbers.length; i++) {
             draws[drawingId].numbersMap[numbers[i]].push(ticketId);
         }
