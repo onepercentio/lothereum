@@ -1,4 +1,4 @@
-pragma solidity ^0.4.13;
+pragma solidity ^0.4.16;
 
 /**
  * @title Lottery Lotthereum
@@ -161,19 +161,19 @@ contract Lothereum {
 
     // Is it time to move to next drawing?
     function _nextDrawing() internal {
-        // freeze data
-        uint prizeToMove = draws[drawingCounter].total;
-        uint32 drawingId = drawingCounter;
         // if itsssssss time....!!!!
         if (nextDrawingDate <= now) {
+            // freeze data
+            uint prizeToMove = draws[drawingCounter].total;
+            uint32 drawingId = drawingCounter;
             // if the current drawing has betters (tickets > 0)
             if (draws[drawingCounter].ticketCounter > 0) {
                 draws[drawingCounter].nextBlockNumber = block.number + blockInterval;
                 prizeToMove = 0; // reset if it has betters
                 _setDrawingStatus(drawingCounter, Status.Drawing); // put it in drawing mode
             } else { // if has not just finish
-                _setDrawingStatus(drawingCounter, Status.Finished); // if has not end it
-                // if its finished here it means that no bets, so we have to transport the prizeToMove
+                _setDrawingStatus(drawingCounter, Status.Skipped); // if has not end it
+                // if its skipped here it means that no bets, so we have to transport the prizeToMove
             }
             // if has passed a long time move the lottery ahead skipping till there
             // this gas is on the user but there's nothing we can do about it :D
@@ -255,7 +255,7 @@ contract Lothereum {
     }
 
     // Ticket purchase
-    function buyTicket(uint16[] numbers, address withdraw) payable {
+    function buyTicket(uint16[] numbers) payable {
         // validations
         require(msg.value == ticketPrice);
         require(numbers.length == numbersPerTicket);
@@ -273,7 +273,7 @@ contract Lothereum {
         // add the new ticket
         draws[drawingCounter].tickets[draws[drawingCounter].ticketCounter] = Ticket({
             numbers: numbers,
-            holder: (withdraw != 0x0 ? withdraw : msg.sender),
+            holder: msg.sender,
             hits: 0
         });
 
