@@ -31,8 +31,8 @@ contract Lothereum {
     // use openzepelling contract vault
     mapping(address => uint) public vault; // keep winners money
 
-    // Drawing seed generator
-    uint32 public seedCounter;
+    // Drawing in proccessing
+    uint32 public currentProcessIndex;
 
     // Ticket
     struct Ticket {
@@ -59,7 +59,7 @@ contract Lothereum {
     event PrizeWithdraw(address winner, uint prize);
 
     // Drawing
-    enum Status { Skipped, Running, Drawing, Drawn, Awarding, Finished }
+    enum Status { Skipped, Running, Seeding, Drawing, Awarding, Finished }
     struct Drawing {
         Status status;
         uint total;
@@ -123,7 +123,7 @@ contract Lothereum {
         // initializations
         drawingIndex = 0;
         drawingCounter = 1;
-        seedCounter = 1;
+        currentProcessIndex = 1;
 
         _setDrawingStatus(drawingCounter, Status.Running);
     }
@@ -170,7 +170,7 @@ contract Lothereum {
             if (draws[drawingCounter].ticketCounter > 0) {
                 draws[drawingCounter].nextBlockNumber = block.number + blockInterval;
                 prizeToMove = 0; // reset if it has betters
-                _setDrawingStatus(drawingCounter, Status.Drawing); // put it in drawing mode
+                _setDrawingStatus(drawingCounter, Status.Seeding); // put it in drawing mode
             } else { // if has not just finish
                 _setDrawingStatus(drawingCounter, Status.Skipped); // if has not end it
                 // if its skipped here it means that no bets, so we have to transport the prizeToMove
@@ -205,23 +205,23 @@ contract Lothereum {
             draws[drawingId].seeds.push(block.blockhash(block.number - blockInterval));
             // check if its the last one
             if (draws[drawingId].seeds.length == numbersPerTicket) {
-                seedCounter++; // move to the next contract if finished the seeding process
-                _setDrawingStatus(drawingId, Status.Drawn);
+                currentProcessIndex++; // move to the next contract if finished the seeding process
+                _setDrawingStatus(drawingId, Status.Drawing);
             }
         }
     }
 
     // Is it time(block) to draw a new number
-    function _isDrawing() internal {
+    function _isSeeding() internal {
         // theres is something on the line (online!!!!)
-        if (drawingCounter > seedCounter) {
+        if (drawingCounter > currentProcessIndex) {
             // find next in drawing states
-            while (seedCounter < drawingCounter) {
-                if (draws[seedCounter].status == Status.Drawing) {
-                    _drawSeed(seedCounter);
+            while (currentProcessIndex < drawingCounter) {
+                if (draws[currentProcessIndex].status == Status.Seeding) {
+                    _drawSeed(currentProcessIndex);
                     return; // it is still drawing seeds
-                } else if (draws[seedCounter].status == Status.Skipped) {
-                    seedCounter++; // move on
+                } else if (draws[currentProcessIndex].status == Status.Skipped) {
+                    currentProcessIndex++; // move on
                 }
             }
         }
@@ -230,7 +230,7 @@ contract Lothereum {
     // Drawn the numbers
     function drawNumber(uint32 drawingId) {
         // process it only if is ready
-        if (draws[drawingId].status == Status.Drawn) {
+        if (draws[drawingId].status == Status.Drawing) {
             // and the wizard says: THE PAST SHALL NOT CHANGE
             bytes32 seed = block.blockhash(block.number - blockInterval);
             uint currentIndex = draws[drawingId].winningNumbers.length;
@@ -265,7 +265,13 @@ contract Lothereum {
         _nextDrawing();
 
         // check if is drawing numbers
-        _isDrawing();
+        _isSeeding();
+
+        // check if it should drawn a number
+        // validate here cuz the drawNumber is public and can be called by anyone around the world
+        if (draws[currentProcessIndex].status == Status.Drawing) {
+            drawNumber(currentProcessIndex);
+        }
 
         // effects
         draws[drawingCounter].ticketCounter += 1; // increment ticket
