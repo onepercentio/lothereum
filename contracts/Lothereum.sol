@@ -50,14 +50,14 @@ contract Lothereum {
     }
 
     // Events
-    event NewTicket(uint32 drawing, address holder, uint ticket, uint16[] numbers);
+    event NewTicket(uint32 drawing, address indexed holder, uint ticket, uint16[] numbers);
     event NumberWasDrawed(uint32 drawing, uint16 number);
     event AnnounceDrawing(uint32 drawing, Status status);
     event AnnounceWinner(uint32 drawing, uint ticket, uint8 hits);
-    event AnnouncePrize(uint32 drawing, uint8 hits, uint numberOfWinners, uint prizeShare);
+    event AnnouncePrize(uint32 indexed drawing, uint8 hits, uint numberOfWinners, uint prizeShare);
     event AnnounceSeed(uint32 drawing, uint seed);
     event AccumulatedPrizeMoved(uint32 fromDrawing, uint total, uint32 toDrawing);
-    event PrizeWithdraw(address winner, uint prize);
+    event PrizeWithdraw(address indexed winner, uint prize);
 
     // Drawing
     enum Status { Skipped, Running, Seeding, Drawing, Awarding, Finished }
@@ -303,7 +303,7 @@ contract Lothereum {
     function prizeDelivery(address winner) {
         uint amount = vault[winner];
         if (amount > 0) {
-            vault[winner] = 0;
+            vault[winner] = 0; // set to 0 first so re-entrancy attack wont have anything left to drain.
             winner.transfer(amount);
             PrizeWithdraw(winner, amount);
         }
@@ -386,7 +386,7 @@ contract Lothereum {
 
     // in case of hard bug discovery all ethers go to ETH fundation
     function destroy() {
-        require(msg.sender == owner);
+        require(owner == msg.sender);
         selfdestruct(ETH_TIPJAR);
     }
 }
