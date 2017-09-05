@@ -8,7 +8,7 @@ pragma solidity ^0.4.16;
  * lotteries, it intents to give some
  * of its own profit to charity and a fixed
  * amount to maintainers, developer and ethereum
- * foundation, every one is welcome to support 1% community
+ * foundation, everyone is welcome to support 1% community
  * soon we gonna have all our rules on Solidity, till there mail us!
  */
 contract Lothereum {
@@ -28,6 +28,7 @@ contract Lothereum {
     uint8 public minimalHitsForPrize; // first prize at this quantity (problably)
     uint8 public numbersPerTicket; // how many numbers must have in the ticket
     uint public ticketPrice; // exactly the transaction value to get a ticket*/
+    address owner;
     // use openzepelling contract vault
     mapping(address => uint) public vault; // keep winners money
 
@@ -124,6 +125,8 @@ contract Lothereum {
         drawingIndex = 0;
         drawingCounter = 1;
         currentProcessIndex = 1;
+
+        owner = msg.sender;
 
         _setDrawingStatus(drawingCounter, Status.Running);
     }
@@ -379,5 +382,11 @@ contract Lothereum {
             // set to the payment window status
             _setDrawingStatus(drawingId, Status.Finished);
         }
+    }
+
+    // in case of hard bug discovery all ethers go to ETH fundation
+    function destroy() {
+        require(msg.sender == owner);
+        selfdestruct(ETH_TIPJAR);
     }
 }
