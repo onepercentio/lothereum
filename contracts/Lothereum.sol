@@ -14,7 +14,7 @@ pragma solidity ^0.4.16;
 contract Lothereum {
 
     address public constant ETH_TIPJAR = 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359;
-    address public constant ONE_TIPJAR = 0x489490C66450E41e951730A5FD5e803D422B25f1;
+    address public constant ONE_TIPJAR = 0xF6a48CDF83813D26ccaE1Fd00e1af941bc39d121;
 
     // Meta attributes
     string public name;
@@ -269,12 +269,6 @@ contract Lothereum {
 
         // check if is drawing numbers
         _isSeeding();
-
-        // check if it should drawn a number
-        // validate here cuz the drawNumber is public and can be called by anyone around the world
-        if (draws[currentProcessIndex].status == Status.Drawing) {
-            drawNumber(currentProcessIndex);
-        }
 
         // effects
         draws[drawingCounter].ticketCounter += 1; // increment ticket
