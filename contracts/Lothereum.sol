@@ -28,6 +28,7 @@ contract Lothereum {
     uint8 public minimalHitsForPrize; // first prize at this quantity (problably)
     uint8 public numbersPerTicket; // how many numbers must have in the ticket
     uint public ticketPrice; // exactly the transaction value to get a ticket*/
+    uint8[] accumulationRule; // the amnount per drawingId % mod that will be kept to next drawing
     address owner;
     // use openzepelling contract vault
     mapping(address => uint) public vault; // keep winners money
@@ -75,6 +76,7 @@ contract Lothereum {
         uint feeOnePercent;
         uint donationETHF;
         uint prize;
+        uint accumulatedPrizeToMove;
     }
     mapping(uint32 => Drawing) public draws;
 
@@ -87,7 +89,8 @@ contract Lothereum {
         uint16 _maxDrawableNumber,
         uint _ticketPrice,
         uint8[] _prizeDistribution,
-        uint8 _blockInterval
+        uint8 _blockInterval,
+        uint8[] _accumulationRule
         ) {
         // validations
         // TODO: transform magic numbers into CONST fgs!
@@ -110,7 +113,10 @@ contract Lothereum {
         require(prizeDistributionCheck == 100);
         require(_blockInterval > 15 && _blockInterval < 249);
         require(_numbersPerTicket < _maxDrawableNumber); // ex5 numbers with 5 options
-
+        require(_accumulationRule.length == 10);
+        for (uint8 k = 0; k < _accumulationRule.length ; k++) {
+            require(_accumulationRule[k] <= 90); // must distribute at least 10%
+        }
         // effects
         name = _name;
         drawingInterval = _drawingInterval;
@@ -120,6 +126,7 @@ contract Lothereum {
         ticketPrice = _ticketPrice;
         prizeDistribution = _prizeDistribution;
         blockInterval = _blockInterval;
+        accumulationRule = _accumulationRule;
 
         // initializations
         drawingIndex = 0;
@@ -335,15 +342,19 @@ contract Lothereum {
 
             // 1% is our fee and our fee is our name :D
             draws[drawingId].feeOnePercent = draws[drawingId].total / 100;
-            // 5% goes to the eth foundation (love ya!)
-            draws[drawingId].donationETHF = (draws[drawingId].total * 5) / 100;
+            // 1% goes to the eth foundation (love ya!)
+            draws[drawingId].donationETHF = draws[drawingId].total / 100;
             draws[drawingId].prize = draws[drawingId].total - draws[drawingId].feeOnePercent - draws[drawingId].donationETHF;
+
+            // accumlate to increase some drawing prizes in the future
+            draws[drawingId].accumulatedPrizeToMove = (draws[drawingId].prize * accumulationRule[drawingId % 10]) / 100;
+            draws[drawingId].prize -= draws[drawingId].accumulatedPrizeToMove;
 
             vault[ONE_TIPJAR] += draws[drawingId].feeOnePercent;
             vault[ETH_TIPJAR] += draws[drawingId].donationETHF;
 
             // prize share calculation
-            uint noWinnersAmount;
+            uint amountToMove = draws[drawingId].accumulatedPrizeToMove;
             for (hits = minimalHitsForPrize; hits <= numbersPerTicket; hits++) {
                 // no winners for that number of hits **
                 draws[drawingId].winnersPerHit[hits].prize = (draws[drawingId].prize * prizeDistribution[hits - 1]) / 100;
@@ -353,16 +364,16 @@ contract Lothereum {
                 } else {
                     // no winners share = prize
                     draws[drawingId].winnersPerHit[hits].prizeShare = draws[drawingId].winnersPerHit[hits].prize;
-                    noWinnersAmount += draws[drawingId].winnersPerHit[hits].prize;
+                    amountToMove += draws[drawingId].winnersPerHit[hits].prize;
                 }
                 AnnouncePrize(drawingId, hits, draws[drawingId].winnersPerHit[hits].tickets.length, draws[drawingId].winnersPerHit[hits].prizeShare);
             }
 
             // move all money without winners (diference) to the current drawing
-            if (noWinnersAmount > 0) {
+            if (amountToMove > 0) {
                 // current drawing receives it all
-                draws[drawingCounter].total += noWinnersAmount;
-                AccumulatedPrizeMoved(drawingId, noWinnersAmount, drawingCounter);
+                draws[drawingCounter].total += amountToMove;
+                AccumulatedPrizeMoved(drawingId, amountToMove, drawingCounter);
             }
 
             // vault TODO use the Openzepelling stuff
