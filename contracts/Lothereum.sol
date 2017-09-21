@@ -61,7 +61,7 @@ contract Lothereum {
     event PrizeWithdraw(address indexed winner, uint prize);
 
     // Drawing
-    enum Status { Skipped, Running, Seeding, Drawing, Awarding, Finished }
+    enum Status { Skipped, Running, Drawing, Awarding, Finished }
     struct Drawing {
         Status status;
         uint total;
@@ -71,12 +71,11 @@ contract Lothereum {
         mapping(uint16 => uint[]) numbersMap; // map numbers per ticket
         mapping(uint => Ticket) tickets;
         uint ticketCounter;
-        uint nextBlockNumber;
-        bytes32[] seeds;
         uint feeOnePercent;
         uint donationETHF;
         uint prize;
         uint accumulatedPrizeToMove;
+        uint drawingBlock;
     }
     mapping(uint32 => Drawing) public draws;
 
@@ -178,9 +177,9 @@ contract Lothereum {
             uint32 drawingId = drawingCounter;
             // if the current drawing has betters (tickets > 0)
             if (draws[drawingCounter].ticketCounter > 0) {
-                draws[drawingCounter].nextBlockNumber = block.number + blockInterval;
+                draws[drawingCounter].drawingBlock = block.number + blockInterval;
                 prizeToMove = 0; // reset if it has betters
-                _setDrawingStatus(drawingCounter, Status.Seeding); // put it in drawing mode
+                _setDrawingStatus(drawingCounter, Status.Drawing); // put it in drawing mode
             } else { // if has not just finish
                 _setDrawingStatus(drawingCounter, Status.Skipped); // if has not end it
                 // if its skipped here it means that no bets, so we have to transport the prizeToMove
@@ -204,63 +203,37 @@ contract Lothereum {
         }
     }
 
-    // Drawn a seed
-    function _drawSeed(uint32 drawingId) internal {
-        // if itsssssss time... !!!!
-        if (block.number >= draws[drawingId].nextBlockNumber) {
-            // move to next drawing
-            draws[drawingId].nextBlockNumber = block.number + blockInterval;
-            // draw a number
-            AnnounceSeed(drawingId, draws[drawingId].seeds.length);
-            draws[drawingId].seeds.push(block.blockhash(block.number - blockInterval));
-            // check if its the last one
-            if (draws[drawingId].seeds.length == numbersPerTicket) {
-                currentProcessIndex++; // move to the next contract if finished the seeding process
-                _setDrawingStatus(drawingId, Status.Drawing);
-            }
+    // delete and rearrange TODO: use FOR
+    function _remove(uint index, uint16[] memory _balls) {
+        if (index >= _balls.length) return;
+        for (uint i = index; i < _balls.length - 1; i++) {
+            _balls[i] = _balls[i + 1];
         }
+        delete _balls[_balls.length - 1];
+        _balls.length--;
+        return _balls;
     }
 
-    // Is it time(block) to draw a new number
-    function _isSeeding() internal {
-        // theres is something on the line (online!!!!)
-        if (drawingCounter > currentProcessIndex) {
-            // find next in drawing states
-            while (currentProcessIndex < drawingCounter) {
-                if (draws[currentProcessIndex].status == Status.Seeding) {
-                    _drawSeed(currentProcessIndex);
-                    return; // it is still drawing seeds
-                } else if (draws[currentProcessIndex].status == Status.Skipped) {
-                    currentProcessIndex++; // move on
-                }
-            }
+    // generate a filled array with all possibles
+    function _balls() returns (balls uint16[]) {
+        for (uint16 i = 0; i < maxDrawableNumber; i++) {
+            balls.push(i + 1);
         }
     }
 
     // Drawn the numbers
-    function drawNumber(uint32 drawingId) {
+    function drawNumbers(uint32 drawingId) {
         // process it only if is ready
-        if (draws[drawingId].status == Status.Drawing) {
+        if (draws[drawingId].status == Status.Drawing && block.number >= draws[drawingId].drawingBlock) {
             // and the wizard says: THE PAST SHALL NOT CHANGE
-            bytes32 seed = block.blockhash(block.number - blockInterval);
-            uint currentIndex = draws[drawingId].winningNumbers.length;
-            bytes32 numberSeed = keccak256(seed, draws[drawingId].seeds[currentIndex]);
-            uint16 drawnNumber = (uint16(numberSeed) % maxDrawableNumber) + 1;
-            bool notDrawnYet = true;
-            for (uint i = 0; i < draws[drawingId].winningNumbers.length; i++) {
-                if (draws[drawingId].winningNumbers[i] == drawnNumber) {
-                    notDrawnYet = false;
-                    break;
-                }
+            bytes32 seed = block.blockhash(draws[drawingId].drawingBlock);
+            uint16 balls = _balls();
+            while (draws[drawingId].winningNumbers.length < numbersPerTicket) {
+                uint16 index = (uint16(keccak256(seed)) % (maxDrawableNumber - draws[drawingId].winningNumbers.length));
+                draws[drawingId].winningNumbers.push(balls[index]);
+                NumberWasDrawed(drawingId, balls[index]);
             }
-            if (notDrawnYet) {
-                draws[drawingId].winningNumbers.push(drawnNumber);
-                NumberWasDrawed(drawingId, drawnNumber);
-            }
-
-            if (draws[drawingId].winningNumbers.length == numbersPerTicket) {
-                _setDrawingStatus(drawingId, Status.Awarding);
-            }
+            _setDrawingStatus(drawingId, Status.Awarding);
         }
     }
 
@@ -273,9 +246,6 @@ contract Lothereum {
 
         // this drawing is valid or should move the next one
         _nextDrawing();
-
-        // check if is drawing numbers
-        _isSeeding();
 
         // effects
         draws[drawingCounter].ticketCounter += 1; // increment ticket
