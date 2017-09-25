@@ -203,34 +203,28 @@ contract Lothereum {
         }
     }
 
-    // delete and rearrange TODO: use FOR
-    function _remove(uint index, uint16[] memory _balls) {
-        if (index >= _balls.length) return;
-        for (uint i = index; i < _balls.length - 1; i++) {
-            _balls[i] = _balls[i + 1];
-        }
-        delete _balls[_balls.length - 1];
-        _balls.length--;
-        return _balls;
-    }
-
-    // generate a filled array with all possibles
-    function _balls() returns (balls uint16[]) {
-        for (uint16 i = 0; i < maxDrawableNumber; i++) {
-            balls.push(i + 1);
-        }
-    }
-
     // Drawn the numbers
     function drawNumbers(uint32 drawingId) {
         // process it only if is ready
         if (draws[drawingId].status == Status.Drawing && block.number >= draws[drawingId].drawingBlock) {
             // and the wizard says: THE PAST SHALL NOT CHANGE
             bytes32 seed = block.blockhash(draws[drawingId].drawingBlock);
-            uint16 balls = _balls();
+            uint16[] memory balls = new uint16[](maxDrawableNumber);
+            uint16 ballsLen = maxDrawableNumber;
+            for (uint16 i = 0; i < balls.length; i++) {
+                balls[i] = i + 1;
+            }
+
             while (draws[drawingId].winningNumbers.length < numbersPerTicket) {
-                uint16 index = (uint16(keccak256(seed)) % (maxDrawableNumber - draws[drawingId].winningNumbers.length));
+                uint16 index = uint16(uint16(keccak256(seed, draws[drawingId].winningNumbers.length)) % (maxDrawableNumber - draws[drawingId].winningNumbers.length));
                 draws[drawingId].winningNumbers.push(balls[index]);
+
+                if (index < ballsLen) {
+                    for (i = index; i < ballsLen - 1; i++) {
+                        balls[i] = balls[i + 1];
+                    }
+                }
+                ballsLen--;
                 NumberWasDrawed(drawingId, balls[index]);
             }
             _setDrawingStatus(drawingId, Status.Awarding);
