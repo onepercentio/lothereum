@@ -1,4 +1,4 @@
-pragma solidity ^0.4.16;
+pragma solidity ^0.4.15;
 
 /**
  * @title Lottery Lotthereum
@@ -40,6 +40,7 @@ contract Lothereum {
     struct Ticket {
         uint16[] numbers;
         address holder;
+        address destination;
         uint8 hits;
     }
 
@@ -232,7 +233,7 @@ contract Lothereum {
     }
 
     // Ticket purchase
-    function buyTicket(uint16[] numbers) payable {
+    function buyTicket(uint16[] numbers, address destination) payable {
         // validations
         require(msg.value == ticketPrice);
         require(numbers.length == numbersPerTicket);
@@ -248,6 +249,7 @@ contract Lothereum {
         draws[drawingCounter].tickets[draws[drawingCounter].ticketCounter] = Ticket({
             numbers: numbers,
             holder: msg.sender,
+            destination: destination,
             hits: 0
         });
 
@@ -345,7 +347,7 @@ contract Lothereum {
             for (uint v = 0; v < draws[drawingId].winningTickets.length; v++) {
                 ticketId = draws[drawingId].winningTickets[v];
                 hits = draws[drawingId].tickets[ticketId].hits;
-                vault[draws[drawingId].tickets[ticketId].holder] += draws[drawingId].winnersPerHit[hits].prizeShare;
+                vault[draws[drawingId].tickets[ticketId].destination] += draws[drawingId].winnersPerHit[hits].prizeShare;
             }
 
             // set to the payment window status
