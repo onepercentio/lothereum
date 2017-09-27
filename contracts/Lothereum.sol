@@ -14,7 +14,7 @@ pragma solidity ^0.4.15;
 contract Lothereum {
 
     address public constant ETH_TIPJAR = 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359;
-    address public constant ONE_TIPJAR = 0xF6a48CDF83813D26ccaE1Fd00e1af941bc39d121;
+    address public constant ONE_TIPJAR = 0xCb4847A4A4E32BF24f6c960C093281dEFE49cba6;
 
     // Meta attributes
     string public name;
@@ -40,7 +40,7 @@ contract Lothereum {
     struct Ticket {
         uint16[] numbers;
         address holder;
-        address destination;
+        address buyer;
         uint8 hits;
     }
 
@@ -248,8 +248,8 @@ contract Lothereum {
         // add the new ticket
         draws[drawingCounter].tickets[draws[drawingCounter].ticketCounter] = Ticket({
             numbers: numbers,
-            holder: msg.sender,
-            destination: destination,
+            holder: destination,
+            buyer: msg.sender,
             hits: 0
         });
 
@@ -347,7 +347,7 @@ contract Lothereum {
             for (uint v = 0; v < draws[drawingId].winningTickets.length; v++) {
                 ticketId = draws[drawingId].winningTickets[v];
                 hits = draws[drawingId].tickets[ticketId].hits;
-                vault[draws[drawingId].tickets[ticketId].destination] += draws[drawingId].winnersPerHit[hits].prizeShare;
+                vault[draws[drawingId].tickets[ticketId].holder] += draws[drawingId].winnersPerHit[hits].prizeShare;
             }
 
             // set to the payment window status
